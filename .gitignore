@@ -1,0 +1,25 @@
+echo "# Python cache
+__pycache__/
+*.pyc
+.python-version
+
+# Virtual environment
+podcast-nv/
+
+# Data/output folders
+audio/
+clips/
+transcripts/
+
+# API keys
+.env
+*.key
+
+# IDE
+.vscode/
+.idea/
+
+# Large files
+*.mp3
+*.mp4
+*.srt" > .gitignore
