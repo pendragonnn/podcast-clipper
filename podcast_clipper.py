@@ -4,6 +4,7 @@ import whisper
 import time
 import re
 from llama_cpp import Llama
+from gtts import gTTS
 
 def download_podcast(url):
   """Download audio from YouTube podcast"""
@@ -118,6 +119,23 @@ def save_summary(video_id, summary, folder="summaries"):
   print(f"Saved to {summary_file}")
   return summary_file
 
+def generate_voiceover(text, output_file="narration.mp3", lang='en'):
+  """
+    Generate voiceover from text using gTTS (Google Text-to-Speech).
+  """
+  if not text.strip():
+    raise ValueError("Input text for voiceover is empty.")
+
+  output_dir = "narrations"
+  os.makedirs(output_dir, exist_ok=True)
+  output_path = os.path.join(output_dir, output_file)
+
+  tts = gTTS(text=text, lang=lang, slow=False)
+  tts.save(output_path)
+
+  print(f"Voiceover generated: {output_path}")
+  return output_path
+
 if __name__ == "__main__":
   url = "https://www.youtube.com/watch?v=nogh434ykF0&t=84s"
   try:
@@ -135,6 +153,14 @@ if __name__ == "__main__":
     print("\nGenerated Summary:")
     print(summary)
     save_summary(video_id, summary, folder="summaries")
+
+    # (2) Generate voiceover narration
+    narration_file = generate_voiceover(
+      text=summary,
+      output_file=f"{video_id}_narration.mp3",
+      lang='en'
+    )
+    print(f"Narration audio saved at: {narration_file}")
 
   except Exception as e:
     print(f"Error: {e}")
