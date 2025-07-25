@@ -2,6 +2,8 @@ import yt_dlp as ydl
 import os
 import whisper
 import time
+import re
+from llama_cpp import Llama
 
 def download_podcast(url):
   """Download audio from YouTube podcast"""
@@ -24,11 +26,10 @@ def download_podcast(url):
     return audio_filename, info['id'], info['title']
 
 def transcribe_audio(audio_path, model_size="base"):
-  """transcript audio to text with Whisper"""
+  """Transcribe audio to text with Whisper"""
   print(f"Loading Whisper model ({model_size})...")
   start_time = time.time()
 
-  # Load model Whisper
   model = whisper.load_model(model_size)
 
   print(f"Transcribing audio: {os.path.basename(audio_path)}")
@@ -52,23 +53,88 @@ def save_transcript(video_id, text):
   print(f"Transcript saved: {transcript_file}")
   return transcript_file
 
+def clean_transcript(text):
+  """Clean up transcript for better summarization and narration"""
+  text = re.sub(r'\b(uh|um|ah|mm|oh|like|you know)\b', '', text, flags=re.IGNORECASE)
+  text = re.sub(r'\d{1,2}:\d{2}(:\d{2})?', '', text)  # remove timestamps
+  text = re.sub(r'\b(Speaker \d+|[A-Z ]+:)\b', '', text, flags=re.IGNORECASE)  # remove speaker labels
+  text = re.sub(r'[^\w\s.,?!]', '', text)
+  text = re.sub(r'\s+', ' ', text).strip()
+  text = re.sub(r'[.]{2,}', '.', text)
+  return text
+
+def approximate_token_count(text: str) -> int:
+  return len(text) // 3
+
+def chunk_text(text: str, max_tokens: int) -> list:
+  chunks = []
+  current_chunk = ""
+  for sentence in re.split(r'(?<=[.!?]) +', text):
+    if approximate_token_count(current_chunk + sentence) < max_tokens:
+      current_chunk += sentence + " "
+    else:
+      chunks.append(current_chunk.strip())
+      current_chunk = sentence + " "
+  if current_chunk:
+    chunks.append(current_chunk.strip())
+  return chunks
+
+def generate_summary_with_llama(text: str) -> str:
+  llm = Llama(model_path="./llama-2-7b-chat.Q4_K_M.gguf")
+  model_context_limit = 512
+  reserved_for_prompt = 256
+  chunk_token_limit = model_context_limit - reserved_for_prompt
+
+  print(f"Chunking text with approx {chunk_token_limit} tokens per chunk...")
+  chunks = chunk_text(text, chunk_token_limit)
+  summaries = []
+
+  for idx, chunk in enumerate(chunks):
+    prompt = f"""
+        You are an expert summarizer.
+        Summarize the following transcript chunk into a concise summary for create a youtube short video.
+
+        Transcript Chunk:
+        {chunk}
+
+        Summary:
+        """
+    print(f"Generating summary for chunk {idx+1}/{len(chunks)}...")
+    print(f"Chunk: {chunk}")
+    output = llm(prompt, max_tokens=200)
+    summary = output['choices'][0]['text'].strip()
+    print(f"Summary Output: {summary}")
+    summaries.append(summary)
+
+  combined_summary = " ".join(summaries)
+  print("All chunks summarized.")
+  return combined_summary
+
+def save_summary(video_id, summary, folder="summaries"):
+  os.makedirs(folder, exist_ok=True)
+  summary_file = os.path.join(folder, f"{video_id}.txt")
+  with open(summary_file, "w", encoding="utf-8") as f:
+    f.write(summary)
+  print(f"Saved to {summary_file}")
+  return summary_file
+
 if __name__ == "__main__":
-  url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+  url = "https://www.youtube.com/watch?v=nogh434ykF0&t=84s"
   try:
-    # Download podcast
     audio_file, video_id, title = download_podcast(url)
     print(f"Download: {title}")
     print(f"Audio file: {audio_file}")
 
-    # Transcribe audio
     transcript = transcribe_audio(audio_file, model_size="base")
-
-    # Save transcript
     transcript_file = save_transcript(video_id, transcript)
 
-    # Print first 200 characters for verification
-    print("\nTranscript snippet:")
-    print(transcript[:200] + "....")
+    cleaned_text = clean_transcript(transcript)
+
+    # (1) Generate summary
+    summary = generate_summary_with_llama(cleaned_text)
+    print("\nGenerated Summary:")
+    print(summary)
+    save_summary(video_id, summary, folder="summaries")
 
   except Exception as e:
     print(f"Error: {e}")
