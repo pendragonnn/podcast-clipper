@@ -13,7 +13,8 @@ transcripts/
 summaries/
 models/
 narrations/
-llama-2-7b-chat.Q4_K_M.gguf
+images/
+.cache
 
 # API keys
 .env
@@ -26,4 +27,6 @@ llama-2-7b-chat.Q4_K_M.gguf
 # Large files
 *.mp3
 *.mp4
+*.jpg
+*.gguf
 *.srt" > .gitignore
