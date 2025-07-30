@@ -5,6 +5,10 @@ import time
 import re
 from llama_cpp import Llama
 from gtts import gTTS
+from moviepy import ImageClip, AudioFileClip, TextClip, CompositeVideoClip
+from diffusers import StableDiffusionPipeline
+import torch
+
 
 def download_podcast(url):
   """Download audio from YouTube podcast"""
@@ -81,7 +85,7 @@ def chunk_text(text: str, max_tokens: int) -> list:
   return chunks
 
 def generate_summary_with_llama(text: str) -> str:
-  llm = Llama(model_path="./llama-2-7b-chat.Q4_K_M.gguf")
+  llm = Llama(model_path="./llama-2-7b-chat.Q4_K_M.gguf", n_gpu_layers=-1)
   model_context_limit = 512
   reserved_for_prompt = 256
   chunk_token_limit = model_context_limit - reserved_for_prompt
@@ -136,9 +140,61 @@ def generate_voiceover(text, output_file="narration.mp3", lang='en'):
   print(f"Voiceover generated: {output_path}")
   return output_path
 
+
+def generate_image_from_summary(prompt_text, output_path="default_bg.jpg"):
+  print("Loading Stable Diffusion pipeline...")
+  pipe = StableDiffusionPipeline.from_pretrained("runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16)
+  
+  pipe = pipe.to("cuda" if torch.cuda.is_available() else "cpu")
+
+
+  full_prompt = f"Podcast background, cinematic, dramatic lighting, blurred, minimalist"
+
+  print(f"Generating image with prompt:\n{full_prompt}")
+  image = pipe(full_prompt).images[0]
+  image.save(output_path)
+  output_dir = "images"
+  os.makedirs(output_dir, exist_ok=True)
+  if output_path is None:
+    output_path = os.path.join(output_dir, "generated.jpg")
+  else:
+    output_path = os.path.join(output_dir, os.path.basename(output_path))
+
+  image.save(output_path)
+  print(f"Saved generated image to {output_path}")
+  return output_path
+
+def create_vertical_video(background_img, audio_file, subtitles, output_file="output.mp4"):
+  print("Composing vertical video...")
+  W, H = 1080, 1920
+
+  background = ImageClip(background_img).resized(width=W, height=H)
+
+  audio = AudioFileClip(audio_file)
+  duration = audio.duration
+
+  subtitle_clip = TextClip(
+    text=subtitles,
+    font="C:/Windows/Fonts/arial.ttf",
+    font_size=60,
+    color='white',
+    size=(W - 100, None),
+    method='caption',
+    text_align='center',
+  )
+  
+  subtitle_clip = subtitle_clip.with_position(('center', H - 300)).with_duration(duration)
+
+  final = CompositeVideoClip([background.with_duration(duration), subtitle_clip])
+  final = final.with_audio(audio)
+
+  final.write_videofile(output_file, fps=30, codec='libx264', audio_codec='aac')
+  print(f"Video saved to {output_file}")
+  return output_file
+
 if __name__ == "__main__":
   url = "https://www.youtube.com/watch?v=nogh434ykF0&t=84s"
-  try:
+  try: 
     audio_file, video_id, title = download_podcast(url)
     print(f"Download: {title}")
     print(f"Audio file: {audio_file}")
@@ -160,7 +216,20 @@ if __name__ == "__main__":
       output_file=f"{video_id}_narration.mp3",
       lang='en'
     )
+    
     print(f"Narration audio saved at: {narration_file}")
+
+    # (3) Generate video from narration
+    image_path = f"{video_id}_bg.jpg"
+    generate_image_from_summary(prompt_text=summary, output_path=image_path)
+
+    output_video = create_vertical_video(
+      background_img=image_path,
+      audio_file=narration_file,
+      subtitles=summary,
+      output_file=f"{video_id}_short.mp4"
+    )
+    
 
   except Exception as e:
     print(f"Error: {e}")
