@@ -6,14 +6,8 @@ __pycache__/
 # Virtual environment
 podcast-nv/
 
-# Data/output folders
-audio/
-clips/
-transcripts/
-summaries/
-models/
-narrations/
-images/
+assets/transcripts/*.txt
+assets/summaries/*.txt
 .cache
 
 # API keys
